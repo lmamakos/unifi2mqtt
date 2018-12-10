@@ -244,8 +244,7 @@ def load_config(config_file: Path, args: argparse):
     if not args.hue_key:
         args.hue_key = config["hue"]["key"]
     logging.info(f"Configuration loaded from {str(config_file)}")
-    if args.verbose:
-        logging.info(args)
+    logging.debug(args)
 
 
 def main():
