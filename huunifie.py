@@ -4,29 +4,29 @@
 Licensed under WTFPL.
 http://www.wtfpl.net/about/
 """
-__app_name__ = 'huunifie'
-__version__ = '0.2'
-__author__ = 'kurisuD'
-
 import argparse
+import configparser
+import json
 import logging
 from logging import config
 from logging.handlers import SysLogHandler, TimedRotatingFileHandler
 from pathlib import Path
-
 import requests
 from requests.exceptions import ConnectionError
-import json
+import socket
 import time
 import urllib3
-import configparser
+
+__app_name__ = 'huunifie'
+__version__ = '0.2'
+__author__ = 'kurisuD'
+
 
 __desc__ = """A Hue bridge and Unifi controller client.
 Enables/disables specified Hue schedules in the presence/absence of specified wifi devices on the Unifi controller."""
 
 __interval__ = 3
 __config_path__ = Path("~/.config/huunifie.conf")
-__log_path__ = Path("/tmp") / f'{__app_name__}.log'
 
 __unifi_controller_host__ = "localhost"
 __unifi_controller_port__ = 8443
@@ -46,8 +46,12 @@ __schedules_names_example__ = ["A schedule name with spaces", "another_without"]
 __LOGGING__ = {
     'version': 1,
     'formatters': {
-        'verbose': {
+        'logfile': {
             'format': '%(asctime)s [%(levelname)7s] | %(module)s : %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S %Z'
+        },
+        'syslog': {
+            'format': f'%(asctime)s [%(levelname)7s] | {socket.gethostname()} | %(module)s : %(message)s',
             'datefmt': '%Y-%m-%d %H:%M:%S %Z'
         },
         'simple': {
@@ -65,7 +69,7 @@ __LOGGING__ = {
         __app_name__: {
             'handlers': ['sysout'],
             'propagate': True,
-            'level': 'INFO',
+            'level': 'DEBUG',
         }
     },
 }
@@ -73,7 +77,7 @@ __LOGGING__ = {
 
 class HueClient:
     """
-    Connects to the Hue hub, enable or disable the schedules.
+    Connects to the Hue hub, enables or disables the schedules.
     """
 
     def __init__(self, args):
@@ -84,7 +88,6 @@ class HueClient:
     def change_schedules(self, enabled=False):
         """
         Connects to the Hue hub, enable or disable the schedules.
-        :param enabled:
         """
         status = "enabled" if enabled else "disabled"
         url = f"{self._url_prefix}/schedules"
@@ -101,12 +104,12 @@ class HueClient:
                         else:
                             self.logger.info(msg)
         except ConnectionError:
-            self.logger.error(f"Unable to connect to hue bridge using {self._url_prefix}")
+            self.logger.critical(f"Unable to connect to hue bridge using {self._url_prefix}")
 
 
 class UnifiClient:
     """
-    Connects to the unifi controller, retrieves the wifi clients information, updates Hue schedules.
+    Connects to the Unifi controller, retrieves the wifi clients information, updates Hue schedules.
     """
 
     def __init__(self, args):
@@ -145,13 +148,13 @@ class UnifiClient:
         self._logged_in = value
 
     def _login(self) -> bool:
-        url = f"{self._url_prefix}{__unifi_api_login__}"
         auth_data = json.dumps(self._auth_json)
         self.logger.debug(auth_data)
         try:
-            login_response = self._unifi_session.post(url=url, verify=False, data=auth_data)
+            login_response = self._unifi_session.post(url=f"{self._url_prefix}{__unifi_api_login__}", verify=False,
+                                                      data=auth_data)
         except ConnectionError:
-            self.logger.error(f"Unable to connect to the Unifi controller using {self._url_prefix}")
+            self.logger.critical(f"Unable to connect to the Unifi controller using {self._url_prefix}")
             return False
         self.logged_in = login_response.ok
         return self.logged_in
@@ -160,8 +163,7 @@ class UnifiClient:
         while not self.logged_in:
             self._login()
             time.sleep(self._interval)
-        url = f"{self._url_prefix}{__unifi_api_clients_stats__}"
-        get_response = self._unifi_session.get(url=url, verify=False)
+        get_response = self._unifi_session.get(url=f"{self._url_prefix}{__unifi_api_clients_stats__}", verify=False)
         if get_response.status_code == 200:
             return get_response.content
         else:
@@ -191,7 +193,7 @@ class UnifiClient:
 
     def current_wifi_clients(self) -> list:
         """
-        List of devices connected to Unifi. Each device is a dictionnary with at least the mac address.
+        List of devices connected to Unifi. Each device is a dictionary with at least the mac address.
         """
         self._parse_clients_info()
         return self._current_wifi_clients
@@ -206,6 +208,121 @@ class UnifiClient:
             time.sleep(self._interval)
 
 
+class KDLogger:
+    """A logger without a StreamHandler on sysout and optionally a SysLogHandler or a TimedRotatingFileHandler"""
+
+    def __init__(self, app_name, verbose, debug):
+        self.verbose = verbose
+        self.debug = debug
+        self._log_file = None
+        self._syslog_host = None
+        self._syslog_port = None
+        self.level = logging.INFO if self.verbose else logging.WARNING
+
+        if self.debug:
+            self.level = logging.DEBUG
+        logging.config.dictConfig(__LOGGING__)
+        self.logger = logging.getLogger(app_name)
+        self._sysout_handler = self.logger.handlers[0]
+        self._logfile_handler = None
+        self._syslog_handler = None
+
+        self._update_sysout_formatter()
+        self._update_sysout_level()
+
+        level_name = logging.getLevelName(self.logger.getEffectiveLevel())
+        self.logger.info(f"Logging activated with level {level_name}")
+
+        level_name = logging.getLevelName(self._sysout_handler.level)
+        self.logger.info(f"Sysout logging activated with level {level_name}")
+
+    @property
+    def log_file(self) -> Path:
+        """
+        Log file where to write. Logs are rotated every day, 15 backups are kept
+        """
+        return self._log_file
+
+    @log_file.setter
+    def log_file(self, value: Path):
+        self._log_file = Path(value)
+        if not self._logfile_handler:
+            self._add_logfile_handler()
+        else:
+            self._update_logfile_handler()
+
+    @property
+    def syslog_host(self) -> str:
+        """
+        Sets syslog hostname where to send logs to.
+        """
+        return self._syslog_host
+
+    @syslog_host.setter
+    def syslog_host(self, value: str):
+        self._syslog_host = value
+        if not self._syslog_handler:
+            self._add_syslog_handler()
+        else:
+            self._update_syslog_handler()
+
+    @property
+    def syslog_port(self) -> int:
+        """
+        Sets syslog port where to send logs to.
+        """
+        return self._syslog_port
+
+    @syslog_port.setter
+    def syslog_port(self, value: int):
+        self._syslog_port = value
+        if self._syslog_handler:
+            self._update_syslog_handler()
+
+    def get_logger(self) -> logging.Logger:
+        """
+        get logger object
+        """
+        return self.logger
+
+    @staticmethod
+    def _get_formatter_from_dict(format_name):
+        fmt_from_dict = __LOGGING__['formatters'][format_name]
+        return logging.Formatter(fmt=fmt_from_dict['format'], datefmt=fmt_from_dict['datefmt'])
+
+    def _update_sysout_formatter(self):
+        sysout_fmt_name = 'logfile' if (self.verbose or self.debug) else 'simple'
+        sysout_fmt = self._get_formatter_from_dict(sysout_fmt_name)
+        self._sysout_handler.setFormatter(sysout_fmt)
+
+    def _update_sysout_level(self):
+        self._sysout_handler.level = self.level
+
+    def _add_syslog_handler(self):
+        """Adds a SysLogHandler, with minimum logging set to WARNING and a 'verbose' format"""
+        self._syslog_handler = SysLogHandler(address=(self.syslog_host, self.syslog_port))
+        self._syslog_handler.setLevel(logging.WARNING)
+        self._syslog_handler.setFormatter(self._get_formatter_from_dict('syslog'))
+        self.logger.addHandler(self._syslog_handler)
+        level_name = logging.getLevelName(self._syslog_handler.level)
+        self.logger.debug(f"Added logging to syslog on {self.syslog_host}:{self.syslog_port} with level {level_name}")
+
+    def _update_syslog_handler(self):
+        self._syslog_handler.address = (self.syslog_host, self.syslog_port)
+
+    def _add_logfile_handler(self):
+        """Adds a TimedRotatingFileHandler, with minimum logging set to DEBUG and a 'verbose' format"""
+        self._logfile_handler = TimedRotatingFileHandler(filename=self.log_file, when='D', backupCount=15)
+        self._logfile_handler.setLevel(logging.DEBUG)
+        self._logfile_handler.setFormatter(self._get_formatter_from_dict('logfile'))
+        self.logger.addHandler(self._logfile_handler)
+        level_name = logging.getLevelName(self._logfile_handler.level)
+        self.logger.debug(f"Added logging to {self.log_file} with level  {level_name}")
+
+    def _update_logfile_handler(self):
+        self._logfile_handler.baseFilename = self.log_file
+
+
 class Huunifie:
     """
     Main class
@@ -213,8 +330,8 @@ class Huunifie:
 
     def __init__(self):
         self.arguments = self._read_cli_arguments()
-        self.logger = None
-        self._setup_logger()
+        kdl = KDLogger(app_name=__app_name__, verbose=self.arguments.verbose, debug=self.arguments.debug)
+        self.logger = kdl.get_logger()
         self.config_file = Path(self.arguments.config_file).expanduser()
         if self.config_file.exists():
             self.load_config()
@@ -224,6 +341,10 @@ class Huunifie:
         if self.arguments.save_config:
             self.save_config()
 
+        kdl.log_file = self.arguments.log_file
+        kdl.syslog_port = self.arguments.syslog_port
+        kdl.syslog_host = self.arguments.syslog_host
+
         urllib3.disable_warnings()
 
     def save_config(self):
@@ -231,72 +352,95 @@ class Huunifie:
         Save current settings to configuration file
         """
 
-        hconfig = configparser.ConfigParser()
-        hconfig["general"] = {}
+        h_config = configparser.ConfigParser()
+
+        h_config["general"] = {}
         if not self.arguments.interval:
             self.arguments.interval = __interval__
-        hconfig["general"]["interval"] = f"{self.arguments.interval}"
+        h_config["general"]["interval"] = f"{self.arguments.interval}"
         if not self.arguments.wifi_clients:
             self.arguments.wifi_clients = __wifi_clients_example__
-        hconfig["general"]["wifi_clients"] = ",".join(self.arguments.wifi_clients)
+        h_config["general"]["wifi_clients"] = ",".join(self.arguments.wifi_clients)
         if not self.arguments.schedules_names:
             self.arguments.schedules_names = __schedules_names_example__
-        hconfig["general"]["schedules_name"] = ",".join(self.arguments.schedules_names)
-        hconfig["unifi"] = {}
+        h_config["general"]["schedules_name"] = ",".join(self.arguments.schedules_names)
+
+        h_config["unifi"] = {}
         if not self.arguments.unifi_host:
             self.arguments.unifi_host = __unifi_controller_host__
-        hconfig["unifi"]["host"] = self.arguments.unifi_host
+        h_config["unifi"]["host"] = self.arguments.unifi_host
         if not self.arguments.unifi_port:
             self.arguments.unifi_port = __unifi_controller_port__
-        hconfig["unifi"]["port"] = f"{self.arguments.unifi_port}"
+        h_config["unifi"]["port"] = f"{self.arguments.unifi_port}"
         if not self.arguments.unifi_username:
             self.arguments.unifi_username = __unifi_controller_user__
-        hconfig["unifi"]["username"] = self.arguments.unifi_username
+        h_config["unifi"]["username"] = self.arguments.unifi_username
         if not self.arguments.unifi_password:
             self.arguments.unifi_password = __unifi_controller_pwd__
-        hconfig["unifi"]["password"] = self.arguments.unifi_password
-        hconfig["hue"] = {}
+        h_config["unifi"]["password"] = self.arguments.unifi_password
+
+        h_config["hue"] = {}
         if not self.arguments.hue_host:
             self.arguments.hue_host = __hue_hub_host__
-        hconfig["hue"]["host"] = self.arguments.hue_host
+        h_config["hue"]["host"] = self.arguments.hue_host
         if not self.arguments.hue_port:
             self.arguments.hue_port = __hue_hub_port__
-        hconfig["hue"]["port"] = f"{self.arguments.hue_port}"
+        h_config["hue"]["port"] = f"{self.arguments.hue_port}"
         if not self.arguments.hue_key:
             self.arguments.hue_key = __hue_key__
-        hconfig["hue"]["key"] = self.arguments.hue_key
+        h_config["hue"]["key"] = self.arguments.hue_key
+
+        h_config["logging"] = {}
+        if self.arguments.syslog_host:
+            h_config["logging"]["syslog_host"] = self.arguments.syslog_host
+            if self.arguments.syslog_port:
+                h_config["logging"]["syslog_port"] = f"{self.arguments.syslog_port}"
+        if self.arguments.log_file:
+            h_config["logging"]["log_file"] = str(self.arguments.log_file)
+
         with self.config_file.open(mode='w') as configfile:
-            hconfig.write(configfile)
+            h_config.write(configfile)
         self.logger.info(f"Configuration saved to {str(self.config_file)}")
 
     def load_config(self):
         """
         Load settings from configuration file, unless otherwise provided on the command line.
         """
-        hconfig = configparser.ConfigParser()
+        h_config = configparser.ConfigParser()
         with self.config_file.open() as configfile:
-            hconfig.read_file(configfile)
-
+            h_config.read_file(configfile)
+        if not ("general" in h_config.keys() and "unifi" in h_config.keys() and "hue" in h_config.keys()):
+            self.logger.warning(f"Configuration file {self.config_file} is invalid.")
+            return
         if not self.arguments.interval:
-            self.arguments.interval = int(hconfig["general"]["interval"])
+            self.arguments.interval = int(h_config["general"]["interval"])
         if not self.arguments.wifi_clients:
-            self.arguments.wifi_clients = hconfig["general"]["wifi_clients"].split(",")
+            self.arguments.wifi_clients = h_config["general"]["wifi_clients"].split(",")
         if not self.arguments.schedules_names:
-            self.arguments.schedules_names = hconfig["general"]["schedules_name"].split(",")
+            self.arguments.schedules_names = h_config["general"]["schedules_name"].split(",")
         if not self.arguments.unifi_host:
-            self.arguments.unifi_host = hconfig["unifi"]["host"]
+            self.arguments.unifi_host = h_config["unifi"]["host"]
         if not self.arguments.unifi_port:
-            self.arguments.unifi_port = int(hconfig["unifi"]["port"])
+            self.arguments.unifi_port = int(h_config["unifi"]["port"])
         if not self.arguments.unifi_username:
-            self.arguments.unifi_username = hconfig["unifi"]["username"]
+            self.arguments.unifi_username = h_config["unifi"]["username"]
         if not self.arguments.unifi_password:
-            self.arguments.unifi_password = hconfig["unifi"]["password"]
+            self.arguments.unifi_password = h_config["unifi"]["password"]
         if not self.arguments.hue_host:
-            self.arguments.hue_host = hconfig["hue"]["host"]
+            self.arguments.hue_host = h_config["hue"]["host"]
         if not self.arguments.hue_port:
-            self.arguments.hue_port = int(hconfig["hue"]["port"])
+            self.arguments.hue_port = int(h_config["hue"]["port"])
         if not self.arguments.hue_key:
-            self.arguments.hue_key = hconfig["hue"]["key"]
+            self.arguments.hue_key = h_config["hue"]["key"]
+
+        if "logging" in h_config.keys():
+            if "syslog_host" in h_config["logging"].keys() and not self.arguments.syslog_host:
+                self.arguments.syslog_host = h_config["logging"]["syslog_host"]
+            if "syslog_port" in h_config["logging"].keys():
+                self.arguments.syslog_port = int(h_config["logging"]["syslog_port"])
+            if "log_file" in h_config["logging"].keys() and not self.arguments.log_file:
+                self.arguments.log_file = Path(h_config["logging"]["log_file"])
+
         self.logger.info(f"Configuration loaded from {str(self.config_file)}")
         self.logger.debug(self.arguments)
 
@@ -344,57 +488,13 @@ class Huunifie:
         parser.add_argument("-v", "--verbose", help="Prints events information on the console.", action="store_true")
         parser.add_argument("-d", "--debug", help="Verbose mode.", action="store_true")
 
-        parser.add_argument("-l", "--log_file", help="Path to log file.", default=__log_path__, type=Path)
+        parser.add_argument("-l", "--log_file", help="Path to log file.", type=Path)
 
         parser.add_argument("-sh", "--syslog_host",
                             help="Syslog hostname. If present, the logfile is not written locally", type=str)
         parser.add_argument("-sp", "--syslog_port", help="Syslog port.", type=int, default=514)
 
         return parser.parse_args()
-
-    @staticmethod
-    def _get_formatter_from_dict(format_name):
-        fmt_from_dict = __LOGGING__['formatters'][format_name]
-        return logging.Formatter(fmt=fmt_from_dict['format'], datefmt=fmt_from_dict['datefmt'])
-
-    def _update_sysout_formatter(self):
-        sysout_fmt_name = 'verbose' if (self.arguments.verbose or self.arguments.debug) else 'simple'
-        sysout_fmt = self._get_formatter_from_dict(sysout_fmt_name)
-        try:
-            assert (len(self.logger.handlers) == 1)
-            self.logger.handlers[0].setFormatter(sysout_fmt)
-        except AssertionError:
-            print(f"_update_sysout_formatter is to be called before any handlers are added")
-
-    def _add_syslog_handler(self):
-        """Adds a SysLogHandler, with minimum logging set to WARNING and a 'verbose' format"""
-        level = logging.DEBUG if self.arguments.debug else logging.WARNING
-        syslog_hdlr = SysLogHandler(address=(self.arguments.syslog_host, self.arguments.syslog_port))
-        syslog_hdlr.setLevel(level)
-        syslog_hdlr.setFormatter(self._get_formatter_from_dict('verbose'))
-        self.logger.addHandler(syslog_hdlr)
-
-    def _add_logfile_handler(self):
-        """Adds a TimedRotatingFileHandler, with minimum logging set to WARNING and a 'verbose' format"""
-        level = logging.DEBUG if self.arguments.debug else logging.WARNING
-        logfile_hdlr = TimedRotatingFileHandler(filename=self.arguments.log_file, when='D', backupCount=15)
-        logfile_hdlr.setLevel(level)
-        logfile_hdlr.setFormatter(self._get_formatter_from_dict('verbose'))
-        self.logger.addHandler(logfile_hdlr)
-
-    def _setup_logger(self):
-        level = logging.INFO if self.arguments.verbose else logging.WARNING
-        level = logging.DEBUG if self.arguments.debug else level
-        logging.config.dictConfig(__LOGGING__)
-        self.logger = logging.getLogger(__app_name__)
-        self._update_sysout_formatter()
-        self.logger.setLevel(level)
-        if self.arguments.syslog_host:
-            self._add_syslog_handler()
-        elif self.arguments.log_file:
-            self._add_logfile_handler()
-        level_name = logging.getLevelName(self.logger.getEffectiveLevel())
-        self.logger.info(f"Logging activated with level {level_name}")
 
 
 if __name__ == '__main__':
