@@ -8,7 +8,8 @@ usage: huunifie.py [-h] [-uh UNIFI_HOST] [-up UNIFI_PORT] [-uu UNIFI_USERNAME]
                    [-uw UNIFI_PASSWORD] [-hh HUE_HOST] [-hp HUE_PORT]
                    [-hk HUE_KEY] [-wc WIFI_CLIENTS [WIFI_CLIENTS ...]]
                    [-sn SCHEDULES_NAMES [SCHEDULES_NAMES ...]] [-i INTERVAL]
-                   [-v] [-d] [-c CONFIG_FILE] [-s]
+                   [-c CONFIG_FILE] [-s] [-v] [-d] [-l LOG_FILE]
+                   [-sh SYSLOG_HOST] [-sp SYSLOG_PORT]
 
 A Hue bridge and Unifi controller client. Enables/disables specified Hue
 schedules in the presence/absence of specified wifi devices on the Unifi
@@ -40,15 +41,22 @@ optional arguments:
                         separated by spaces. (default: None)
   -i INTERVAL, --interval INTERVAL
                         Polling interval (default: None)
-  -v, --verbose         Prints events information on the console. (default:
-                        False)
-  -d, --debug           Verbose mode. (default: False)
   -c CONFIG_FILE, --config_file CONFIG_FILE
                         Path to configuration file. A template can be created
                         by using the -s option below. (default:
                         ~/.config/huunifie.conf)
   -s, --save_config     Safe configuration given on the command line to the
                         configuration file. (default: False)
+  -v, --verbose         Prints events information on the console. (default:
+                        False)
+  -d, --debug           Verbose mode. (default: False)
+  -l LOG_FILE, --log_file LOG_FILE
+                        Path to log file. (default: None)
+  -sh SYSLOG_HOST, --syslog_host SYSLOG_HOST
+                        Syslog hostname. If present, the logfile is not
+                        written locally (default: None)
+  -sp SYSLOG_PORT, --syslog_port SYSLOG_PORT
+                        Syslog port. (default: 514)
 ```
 
 ## Configuration
