@@ -7,8 +7,9 @@ http://www.wtfpl.net/about/
 import argparse
 import configparser
 import json
-from pap_logger import PaPLogger
 import logging
+
+from pap_logger import *
 from pathlib import Path
 import requests
 from requests.exceptions import ConnectionError
@@ -16,7 +17,7 @@ import time
 import urllib3
 
 __app_name__ = 'huunifie'
-__version__ = '0.2'
+__version__ = '0.3'
 __author__ = 'kurisuD'
 
 __desc__ = """A Hue bridge and Unifi controller client.
@@ -47,7 +48,6 @@ class HueClient:
     """
 
     def __init__(self, args):
-        self.logger = logging.getLogger(__app_name__)
         self._url_prefix = f"http://{args.hue_host}:{args.hue_port}/api/{args.hue_key}"
         self._schedules_names = args.schedules_names
 
@@ -66,11 +66,11 @@ class HueClient:
                         if schedule["status"] != status:
                             msg += f" Changing to {status}."
                             requests.put(f"{url}/{schedule_id}", data=json.dumps({'status': status}))
-                            self.logger.warning(msg)
+                            logging.warning(msg)
                         else:
-                            self.logger.info(msg)
+                            logging.info(msg)
         except ConnectionError:
-            self.logger.critical(f"Unable to connect to hue bridge using {self._url_prefix}")
+            logging.critical(f"Unable to connect to hue bridge using {self._url_prefix}")
 
 
 class UnifiClient:
@@ -79,7 +79,6 @@ class UnifiClient:
     """
 
     def __init__(self, args):
-        self.logger = logging.getLogger(__app_name__)
         self._url_prefix = f"https://{args.unifi_host}:{args.unifi_port}"
         self._auth_json = {"username": args.unifi_username, "password": args.unifi_password, "strict": True}
         self._unifi_session = requests.session()
@@ -115,12 +114,12 @@ class UnifiClient:
 
     def _login(self) -> bool:
         auth_data = json.dumps(self._auth_json)
-        self.logger.debug(auth_data)
+        logging.debug(auth_data)
         try:
             login_response = self._unifi_session.post(url=f"{self._url_prefix}{__unifi_api_login__}", verify=False,
                                                       data=auth_data)
         except ConnectionError:
-            self.logger.critical(f"Unable to connect to the Unifi controller using {self._url_prefix}")
+            logging.critical(f"Unable to connect to the Unifi controller using {self._url_prefix}")
             return False
         self.logged_in = login_response.ok
         return self.logged_in
@@ -146,14 +145,14 @@ class UnifiClient:
                     if prop in client:
                         wc[prop] = client[prop]
                 self._current_wifi_clients.append(wc)
-        self.logger.debug(self._current_wifi_clients)
+        logging.debug(self._current_wifi_clients)
 
     def _eval_is_someone_home(self):
         rtn = 0
         for c in self._current_wifi_clients:
-            self.logger.debug(c.values())
-            self.logger.debug(self._wifi_clients)
-            self.logger.debug(set(self._wifi_clients).intersection(c.values()))
+            logging.debug(c.values())
+            logging.debug(self._wifi_clients)
+            logging.debug(set(self._wifi_clients).intersection(c.values()))
             rtn += len(set(self._wifi_clients).intersection(c.values()))
         self.someone_home = bool(rtn)
 
@@ -181,18 +180,17 @@ class Huunifie:
 
     def __init__(self):
         self.configuration = self._read_cli_arguments()
-        pap = PaPLogger(app_name=__app_name__)
-        self.logger = pap.get_logger()
+        pap = PaPLogger()
         self.config_file = Path(self.configuration.config_file).expanduser()
         if self.config_file.exists():
             self.load_config()
         else:
-            self.logger.warning(f"Configuration file {str(self.config_file)} not found.")
+            logging.warning(f"Configuration file {str(self.config_file)} not found.")
 
         if self.configuration.save_config:
             self.save_config()
 
-        pap.level = logging.DEBUG if self.configuration.debug else logging.INFO
+        pap.level = DEBUG if self.configuration.debug else INFO
         pap.verbose_fmt = self.configuration.verbose
         pap.log_file = self.configuration.log_file
         pap.syslog_port = self.configuration.syslog_port
@@ -253,7 +251,7 @@ class Huunifie:
 
         with self.config_file.open(mode='w') as configfile:
             h_config.write(configfile)
-        self.logger.info(f"Configuration saved to {str(self.config_file)}")
+        logging.info(f"Configuration saved to {str(self.config_file)}")
 
     def load_config(self):
         """
@@ -263,7 +261,7 @@ class Huunifie:
         with self.config_file.open() as configfile:
             h_config.read_file(configfile)
         if not ("general" in h_config.keys() and "unifi" in h_config.keys() and "hue" in h_config.keys()):
-            self.logger.warning(f"Configuration file {self.config_file} is invalid.")
+            logging.warning(f"Configuration file {self.config_file} is invalid.")
             return
         if not self.configuration.interval:
             self.configuration.interval = int(h_config["general"]["interval"])
@@ -294,8 +292,8 @@ class Huunifie:
             if "log_file" in h_config["logging"].keys() and not self.configuration.log_file:
                 self.configuration.log_file = Path(h_config["logging"]["log_file"])
 
-        self.logger.info(f"Configuration loaded from {str(self.config_file)}")
-        self.logger.debug(self.configuration)
+        logging.info(f"Configuration loaded from {str(self.config_file)}")
+        logging.debug(self.configuration)
 
     def main(self):
         """
@@ -355,3 +353,4 @@ if __name__ == '__main__':
         Huunifie().main()
     except KeyboardInterrupt:
         logging.info("User interrupted.")
+        logging.shutdown()
