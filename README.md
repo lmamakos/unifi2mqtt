@@ -1,6 +1,12 @@
 # huunifie
 A Hue bridge and Unifi controller client. Enables/disables specified Hue schedules in the presence/absence of specified wifi devices on the Unifi controller.
 
+## Compatibility information
+
+This code will only work with python 3.6 and above due to its use of f-strings.
+
+It has only been tested under GNU/Linux with a Unify controller 5.9.29 and a hue bridge API version 1.28.0.
+
 ## Usage
 ```
 you@computer:~$ huunifie.py --help
