@@ -341,8 +341,7 @@ class Huunifie:
 
         parser.add_argument("-l", "--log_file", help="Path to log file.", type=Path)
 
-        parser.add_argument("-sh", "--syslog_host",
-                            help="Syslog hostname. If present, the logfile is not written locally", type=str)
+        parser.add_argument("-sh", "--syslog_host", help="Syslog hostname.", type=str)
         parser.add_argument("-sp", "--syslog_port", help="Syslog port.", type=int, default=514)
 
         return parser.parse_args()
