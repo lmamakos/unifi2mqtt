@@ -48,7 +48,7 @@ class HueClient:
     """
 
     def __init__(self, args):
-        self._url_prefix = f"http://{args.hue_host}:{args.hue_port}/api/{args.hue_key}"
+        self._url_prefix = "http://{}:{}/api/{}".format(args.hue_host, args.hue_port, args.hue_key)
         self._schedules_names = args.schedules_names
 
     def change_schedules(self, enabled=False):
@@ -56,21 +56,21 @@ class HueClient:
         Connects to the Hue hub, enable or disable the schedules.
         """
         status = "enabled" if enabled else "disabled"
-        url = f"{self._url_prefix}/schedules"
+        url = "{}/schedules".format(self._url_prefix)
         try:
             schedules_raw = requests.get(url)
             if schedules_raw.ok:
                 for schedule_id, schedule in json.loads(schedules_raw.content).items():
                     if schedule["name"] in self._schedules_names:
-                        msg = f'Schedule "{schedule["name"]}" (id={schedule_id}) is {schedule["status"]}.'
+                        msg = 'Schedule "{}" (id={}) is {}.'.format(schedule["name"], schedule_id, schedule["status"])
                         if schedule["status"] != status:
-                            msg += f" Changing to {status}."
-                            requests.put(f"{url}/{schedule_id}", data=json.dumps({'status': status}))
+                            msg += " Changing to {}.".format(status)
+                            requests.put("{}/{}".format(url, schedule_id), data=json.dumps({'status': status}))
                             logging.warning(msg)
                         else:
                             logging.info(msg)
         except ConnectionError:
-            logging.critical(f"Unable to connect to hue bridge using {self._url_prefix}")
+            logging.critical("Unable to connect to hue bridge using {}".format(self._url_prefix))
 
 
 class UnifiClient:
@@ -79,7 +79,7 @@ class UnifiClient:
     """
 
     def __init__(self, args):
-        self._url_prefix = f"https://{args.unifi_host}:{args.unifi_port}"
+        self._url_prefix = "https://{}:{}".format(args.unifi_host, args.unifi_port)
         self._auth_json = {"username": args.unifi_username, "password": args.unifi_password, "strict": True}
         self._unifi_session = requests.session()
         self._logged_in = False
@@ -116,10 +116,11 @@ class UnifiClient:
         auth_data = json.dumps(self._auth_json)
         logging.debug(auth_data)
         try:
-            login_response = self._unifi_session.post(url=f"{self._url_prefix}{__unifi_api_login__}", verify=False,
+            login_response = self._unifi_session.post(url="{}{}".format(self._url_prefix, __unifi_api_login__),
+                                                      verify=False,
                                                       data=auth_data)
         except ConnectionError:
-            logging.critical(f"Unable to connect to the Unifi controller using {self._url_prefix}")
+            logging.critical("Unable to connect to the Unifi controller using {}".format(self._url_prefix))
             return False
         self.logged_in = login_response.ok
         return self.logged_in
@@ -128,7 +129,8 @@ class UnifiClient:
         while not self.logged_in:
             self._login()
             time.sleep(self._interval)
-        get_response = self._unifi_session.get(url=f"{self._url_prefix}{__unifi_api_clients_stats__}", verify=False)
+        get_response = self._unifi_session.get(url="{}{}".format(self._url_prefix, __unifi_api_clients_stats__),
+                                               verify=False)
         if get_response.status_code == 200:
             return get_response.content
         else:
@@ -185,7 +187,7 @@ class Huunifie:
         if self.config_file.exists():
             self.load_config()
         else:
-            logging.warning(f"Configuration file {str(self.config_file)} not found.")
+            logging.warning("Configuration file {} not found.".format(str(self.config_file)))
 
         if self.configuration.save_config:
             self.save_config()
@@ -208,7 +210,7 @@ class Huunifie:
         h_config["general"] = {}
         if not self.configuration.interval:
             self.configuration.interval = __interval__
-        h_config["general"]["interval"] = f"{self.configuration.interval}"
+        h_config["general"]["interval"] = str(self.configuration.interval)
         if not self.configuration.wifi_clients:
             self.configuration.wifi_clients = __wifi_clients_example__
         h_config["general"]["wifi_clients"] = ",".join(self.configuration.wifi_clients)
@@ -222,7 +224,7 @@ class Huunifie:
         h_config["unifi"]["host"] = self.configuration.unifi_host
         if not self.configuration.unifi_port:
             self.configuration.unifi_port = __unifi_controller_port__
-        h_config["unifi"]["port"] = f"{self.configuration.unifi_port}"
+        h_config["unifi"]["port"] = str(self.configuration.unifi_port)
         if not self.configuration.unifi_username:
             self.configuration.unifi_username = __unifi_controller_user__
         h_config["unifi"]["username"] = self.configuration.unifi_username
@@ -236,7 +238,7 @@ class Huunifie:
         h_config["hue"]["host"] = self.configuration.hue_host
         if not self.configuration.hue_port:
             self.configuration.hue_port = __hue_hub_port__
-        h_config["hue"]["port"] = f"{self.configuration.hue_port}"
+        h_config["hue"]["port"] = str(self.configuration.hue_port)
         if not self.configuration.hue_key:
             self.configuration.hue_key = __hue_key__
         h_config["hue"]["key"] = self.configuration.hue_key
@@ -245,13 +247,13 @@ class Huunifie:
         if self.configuration.syslog_host:
             h_config["logging"]["syslog_host"] = self.configuration.syslog_host
             if self.configuration.syslog_port:
-                h_config["logging"]["syslog_port"] = f"{self.configuration.syslog_port}"
+                h_config["logging"]["syslog_port"] = str(self.configuration.syslog_port)
         if self.configuration.log_file:
             h_config["logging"]["log_file"] = str(self.configuration.log_file)
 
         with self.config_file.open(mode='w') as configfile:
             h_config.write(configfile)
-        logging.info(f"Configuration saved to {str(self.config_file)}")
+        logging.info("Configuration saved to {}".format(str(self.config_file)))
 
     def load_config(self):
         """
@@ -261,7 +263,7 @@ class Huunifie:
         with self.config_file.open() as configfile:
             h_config.read_file(configfile)
         if not ("general" in h_config.keys() and "unifi" in h_config.keys() and "hue" in h_config.keys()):
-            logging.warning(f"Configuration file {self.config_file} is invalid.")
+            logging.warning("Configuration file {} is invalid.".format(self.config_file))
             return
         if not self.configuration.interval:
             self.configuration.interval = int(h_config["general"]["interval"])
@@ -292,7 +294,7 @@ class Huunifie:
             if "log_file" in h_config["logging"].keys() and not self.configuration.log_file:
                 self.configuration.log_file = Path(h_config["logging"]["log_file"])
 
-        logging.info(f"Configuration loaded from {str(self.config_file)}")
+        logging.info("Configuration loaded from {}".format(str(self.config_file)))
         logging.debug(self.configuration)
 
     def main(self):
