@@ -59,8 +59,13 @@ class HueClient:
         url = "{}/schedules".format(self._url_prefix)
         try:
             schedules_raw = requests.get(url)
+            if isinstance(schedules_raw.content, bytes):
+                schedules_raw_content = schedules_raw.content.decode()
+            else:
+                schedules_raw_content = schedules_raw.content
+
             if schedules_raw.ok:
-                for schedule_id, schedule in json.loads(schedules_raw.content).items():
+                for schedule_id, schedule in json.loads(schedules_raw_content).items():
                     if schedule["name"] in self._schedules_names:
                         msg = 'Schedule "{}" (id={}) is {}.'.format(schedule["name"], schedule_id, schedule["status"])
                         if schedule["status"] != status:
@@ -132,7 +137,10 @@ class UnifiClient:
         get_response = self._unifi_session.get(url="{}{}".format(self._url_prefix, __unifi_api_clients_stats__),
                                                verify=False)
         if get_response.status_code == 200:
-            return get_response.content
+            if isinstance(get_response.content, bytes):
+                return get_response.content.decode()
+            else:
+                return get_response.content
         else:
             self.logged_in = False
             return ""
