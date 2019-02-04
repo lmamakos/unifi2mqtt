@@ -1,13 +1,19 @@
 # huunifie
 A Hue bridge and Unifi controller client. Enables/disables specified Hue schedules in the presence/absence of specified wifi devices on the Unifi controller.
 
+## Installation
+
+huunifie can be installed with the following command:
+
+`python3 -m pip install huunifie`
+
 ## Compatibility information
 
 This code was only tested with python 3.5 and above under GNU/Linux with a Unify controller 5.9.29 and a hue bridge API version 1.28.0.
 
 ## Usage
 ```
-you@computer:~$ huunifie.py --help
+you@computer:~$ python3 -m huunifie --help
 usage: huunifie.py [-h] [-uh UNIFI_HOST] [-up UNIFI_PORT] [-uu UNIFI_USERNAME]
                    [-uw UNIFI_PASSWORD] [-hh HUE_HOST] [-hp HUE_PORT]
                    [-hk HUE_KEY] [-wc WIFI_CLIENTS [WIFI_CLIENTS ...]]
@@ -81,7 +87,7 @@ Only values specified on the command line will be update in the config file.
 * Create a config file:
 
 ```
-you@computer:~$ huunifie.py -s -v -c /tmp/test_huunifie.conf
+you@computer:~$ python3 -m huunifie -s -v -c /tmp/test_huunifie.conf
 2018-12-10 21:55:38 [WARNING] : Configuration file /tmp/test_huunifie.conf not found.
 2018-12-10 21:55:38 [   INFO] : Configuration saved to /tmp/test_huunifie.conf
 2018-12-10 21:55:38 [  ERROR] : Unable to connect to the Unifi controller using https://localhost:8443
@@ -107,7 +113,7 @@ key = Your_40_alphanumeric_hue_api_key_please.
 * Update an existing config file
 
 ```
-you@computer:~$ huunifie.py -hh hue -uh unifi -v -s -c /tmp/test_huunifie.conf
+you@computer:~$ python3 -m huunifie -hh hue -uh unifi -v -s -c /tmp/test_huunifie.conf
 2018-12-10 21:59:06 [   INFO] : Configuration loaded from /tmp/test_huunifie.conf
 2018-12-10 21:59:06 [   INFO] : Configuration saved to /tmp/test_huunifie.conf
 2018-12-10 21:59:06 [  ERROR] : Unable to connect to the Unifi controller using https://unifi:8443
