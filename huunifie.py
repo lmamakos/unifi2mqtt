@@ -17,7 +17,7 @@ import time
 import urllib3
 
 __app_name__ = 'huunifie'
-__version__ = '0.3'
+__version__ = '0.4'
 __author__ = 'kurisuD'
 
 __desc__ = """A Hue bridge and Unifi controller client.
@@ -38,8 +38,36 @@ __hue_hub_host__ = "hue"
 __hue_hub_port__ = 80
 __hue_key__ = "Your_40_alphanumeric_hue_api_key_please."
 
+__zmq_default_publishing_host__ = "*"
+__zmq_default_publishing_port__ = 12168  # hu = 104*117
+
 __wifi_clients_example__ = ["01:23:45:67:89:ab", "your_device_hostname"]
 __schedules_names_example__ = ["A schedule name with spaces", "another_without"]
+
+
+class ZmqPublisher:
+    """
+    Sends client info via zmq
+    """
+
+    def __init__(self, args):
+        try:
+            import zmq
+            context = zmq.Context()
+            self._socket = context.socket(zmq.PUB)
+            self._socket.bind("tcp://{}:{}".format(args.pub_host, args.pub_port))
+            logging.info("ZMQ publication available on port {}".format(args.pub_port))
+            self.available = True
+        except ImportError:
+            logging.error("zmq module is not available.")
+            self.available = False
+
+    def send_client_info(self, clients_info: list):
+        """
+        publishes the (watched) connected clients info
+        :param clients_info: a list of dictionaries
+        """
+        self._socket.send_string(json.dumps(clients_info))
 
 
 class HueClient:
@@ -93,6 +121,7 @@ class UnifiClient:
         self._someone_home = False
         self._interval = args.interval
         self.hc = HueClient(args)
+        self._zmq = ZmqPublisher(args)
 
     @property
     def someone_home(self) -> bool:
@@ -155,6 +184,9 @@ class UnifiClient:
                     if prop in client:
                         wc[prop] = client[prop]
                 self._current_wifi_clients.append(wc)
+        if self._zmq.available:
+            self._zmq.send_client_info(self._current_wifi_clients)
+
         logging.debug(self._current_wifi_clients)
 
     def _eval_is_someone_home(self):
@@ -251,6 +283,14 @@ class Huunifie:
             self.configuration.hue_key = __hue_key__
         h_config["hue"]["key"] = self.configuration.hue_key
 
+        h_config["zmq"] = {}
+        if not self.configuration.pub_host:
+            self.configuration.pub_host = __zmq_default_publishing_host__
+        h_config["zmq"]["host"] = self.configuration.pub_host
+        if not self.configuration.pub_port:
+            self.configuration.pub_port = __zmq_default_publishing_port__
+        h_config["zmq"]["port"] = str(self.configuration.pub_port)
+
         h_config["logging"] = {}
         if self.configuration.syslog_host:
             h_config["logging"]["syslog_host"] = self.configuration.syslog_host
@@ -294,6 +334,11 @@ class Huunifie:
         if not self.configuration.hue_key:
             self.configuration.hue_key = h_config["hue"]["key"]
 
+        if not self.configuration.pub_host:
+            self.configuration.pub_host = h_config["zmq"]["host"]
+        if not self.configuration.pub_port:
+            self.configuration.pub_port = int(h_config["zmq"]["port"])
+
         if "logging" in h_config.keys():
             if "syslog_host" in h_config["logging"].keys() and not self.configuration.syslog_host:
                 self.configuration.syslog_host = h_config["logging"]["syslog_host"]
@@ -325,6 +370,11 @@ class Huunifie:
         parser.add_argument("-hh", "--hue_host", help="Hue hub hostname", type=str)
         parser.add_argument("-hp", "--hue_port", help="Hue hub port", type=int)
         parser.add_argument("-hk", "--hue_key", help="Hue hub API key", type=str)
+
+        parser.add_argument("--pub_host", help="host for zmq publication", default=__zmq_default_publishing_host__,
+                            type=str)
+        parser.add_argument("--pub_port", help="port for zmq publication", default=__zmq_default_publishing_port__,
+                            type=int)
 
         parser.add_argument("-wc", "--wifi_clients",
                             help="Wifi clients (hostname or mac) to monitor. Clients names are separated by spaces.",
