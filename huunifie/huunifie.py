@@ -51,6 +51,10 @@ class ZmqPublisher:
     """
 
     def __init__(self, args):
+        if args.no_pub:
+            logging.error("ZMQ publication is disabled.")
+            self.available = False
+            return
         try:
             import zmq
             context = zmq.Context()
@@ -290,6 +294,8 @@ class Huunifie:
         if not self.configuration.pub_port:
             self.configuration.pub_port = __zmq_default_publishing_port__
         h_config["zmq"]["port"] = str(self.configuration.pub_port)
+        if "no_pub" in self.configuration:
+            h_config["zmq"]["disabled"] = str(int(self.configuration.no_pub))
 
         h_config["logging"] = {}
         if self.configuration.syslog_host:
@@ -338,6 +344,8 @@ class Huunifie:
             self.configuration.pub_host = h_config["zmq"]["host"]
         if not self.configuration.pub_port:
             self.configuration.pub_port = int(h_config["zmq"]["port"])
+        if "no_pub" not in self.configuration:
+            self.configuration.no_pub = bool(int(h_config["zmq"]["disabled"]))
 
         if "logging" in h_config.keys():
             if "syslog_host" in h_config["logging"].keys() and not self.configuration.syslog_host:
@@ -360,7 +368,7 @@ class Huunifie:
     @staticmethod
     def _read_cli_arguments():
         parser = argparse.ArgumentParser(description=__desc__,
-                                         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+                                         formatter_class=argparse.ArgumentDefaultsHelpFormatter, epilog=__desc__)
 
         parser.add_argument("-uh", "--unifi_host", help="Unifi controller hostname", type=str)
         parser.add_argument("-up", "--unifi_port", help="Unifi controller port", type=int)
@@ -370,10 +378,16 @@ class Huunifie:
         parser.add_argument("-hh", "--hue_host", help="Hue hub hostname", type=str)
         parser.add_argument("-hp", "--hue_port", help="Hue hub port", type=int)
         parser.add_argument("-hk", "--hue_key", help="Hue hub API key", type=str)
+        pub_group = parser.add_mutually_exclusive_group()
 
-        parser.add_argument("--pub_host", help="host for zmq publication", default=__zmq_default_publishing_host__,
+        pub_group.add_argument("--no_pub", help="Disables zmq publication", action='store_true',
+                               default=argparse.SUPPRESS)
+        pub_group.add_argument("--pub", help="Enables zmq publication", action='store_false', dest="no_pub",
+                               default=argparse.SUPPRESS)
+
+        parser.add_argument("--pub_host", help="Host for zmq publication", default=__zmq_default_publishing_host__,
                             type=str)
-        parser.add_argument("--pub_port", help="port for zmq publication", default=__zmq_default_publishing_port__,
+        parser.add_argument("--pub_port", help="Port for zmq publication", default=__zmq_default_publishing_port__,
                             type=int)
 
         parser.add_argument("-wc", "--wifi_clients",
