@@ -24,7 +24,7 @@ __desc__ = """A Hue bridge and Unifi controller client.
 Enables/disables specified Hue schedules in the presence/absence of specified wifi devices on the Unifi controller."""
 
 __interval__ = 3
-__config_path__ = Path("~/.config/huunifie.conf")
+__config_path__ = Path("~/.huunifie.conf").expanduser()
 
 __unifi_controller_host__ = "localhost"
 __unifi_controller_port__ = 8443
@@ -227,7 +227,7 @@ class Huunifie:
     def __init__(self):
         self.configuration = self._read_cli_arguments()
         pap = PaPLogger()
-        self.config_file = Path(self.configuration.config_file).expanduser()
+        self.config_file = Path(self.configuration.config_file)
         if self.config_file.exists():
             self.load_config()
         else:
