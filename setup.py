@@ -6,7 +6,7 @@ with open("README.md") as fh:
 
 setuptools.setup(
     name="huunifie",
-    version="0.4.0",
+    version="0.4.1",
     author="KurisuD",
     author_email="KurisuD@pypi.darnand.net",
     description="""A Hue bridge and Unifi controller client.
