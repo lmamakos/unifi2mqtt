@@ -347,12 +347,13 @@ class Huunifie:
         if not self.configuration.hue_key:
             self.configuration.hue_key = h_config["hue"]["key"]
 
-        if not self.configuration.pub_host:
-            self.configuration.pub_host = h_config["zmq"]["host"]
-        if not self.configuration.pub_port:
-            self.configuration.pub_port = int(h_config["zmq"]["port"])
-        if "no_pub" not in self.configuration:
-            self.configuration.no_pub = bool(int(h_config["zmq"]["disabled"]))
+        if "general" in h_config.keys():
+            if not self.configuration.pub_host:
+                self.configuration.pub_host = h_config["zmq"]["host"]
+            if not self.configuration.pub_port:
+                self.configuration.pub_port = int(h_config["zmq"]["port"])
+            if "no_pub" not in self.configuration:
+                self.configuration.no_pub = bool(int(h_config["zmq"]["disabled"]))
 
         if "logging" in h_config.keys():
             if "syslog_host" in h_config["logging"].keys() and not self.configuration.syslog_host:
