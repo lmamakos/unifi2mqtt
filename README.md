@@ -3,9 +3,7 @@ A Hue bridge and Unifi controller client. Enables/disables specified Hue schedul
 
 ## Compatibility information
 
-This code will only work with python 3.6 and above due to its use of f-strings.
-
-It has only been tested under GNU/Linux with a Unify controller 5.9.29 and a hue bridge API version 1.28.0.
+This code was only tested with python 3.5 and above under GNU/Linux with a Unify controller 5.9.29 and a hue bridge API version 1.28.0.
 
 ## Usage
 ```
@@ -37,6 +35,10 @@ optional arguments:
                         Hue hub port (default: None)
   -hk HUE_KEY, --hue_key HUE_KEY
                         Hue hub API key (default: None)
+  --no_pub              Disables zmq publication
+  --pub                 Enables zmq publication
+  --pub_host PUB_HOST   Host for zmq publication (default: *)
+  --pub_port PUB_PORT   Port for zmq publication (default: 12168)
   -wc WIFI_CLIENTS [WIFI_CLIENTS ...], --wifi_clients WIFI_CLIENTS [WIFI_CLIENTS ...]
                         Wifi clients (hostname or mac) to monitor. Clients
                         names are separated by spaces. (default: None)
@@ -63,6 +65,10 @@ optional arguments:
                         written locally (default: None)
   -sp SYSLOG_PORT, --syslog_port SYSLOG_PORT
                         Syslog port. (default: 514)
+
+A Hue bridge and Unifi controller client. Enables/disables specified Hue
+schedules in the presence/absence of specified wifi devices on the Unifi
+controller.
 ```
 
 ## Configuration
