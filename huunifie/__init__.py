@@ -58,6 +58,7 @@ class ZmqPublisher:
             import zmq
             context = zmq.Context()
             self._socket = context.socket(zmq.PUB)
+            self._socket.setsockopt(zmq.CONFLATE, 1)
             self._socket.bind("tcp://{}:{}".format(args.pub_host, args.pub_port))
             logging.info("ZMQ publication available on port {}".format(args.pub_port))
             self.available = True
@@ -205,8 +206,9 @@ class UnifiClient:
         for c in self._current_wifi_clients:
             logging.debug(c.values())
             logging.debug(self._wifi_clients)
-            logging.debug(set(self._wifi_clients).intersection(c.values()))
-            rtn += len(set(self._wifi_clients).intersection(c.values()))
+            set_wifi = set(self._wifi_clients).intersection(c.values())
+            logging.info(set_wifi)
+            rtn += len(set_wifi)
         self.someone_home = bool(rtn)
 
     def current_wifi_clients(self) -> list:
