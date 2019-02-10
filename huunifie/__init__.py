@@ -209,7 +209,8 @@ class UnifiClient:
             logging.debug(c.values())
             logging.debug(self._wifi_clients)
             set_wifi = set(self._wifi_clients).intersection(c.values())
-            logging.info(set_wifi)
+            if len(set_wifi):
+                logging.debug(set_wifi)
             rtn += len(set_wifi)
         self.someone_home = bool(rtn)
 
