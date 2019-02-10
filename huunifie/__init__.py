@@ -7,6 +7,7 @@ import argparse
 import configparser
 import json
 import logging
+from datetime import datetime
 
 from pap_logger import *
 from pathlib import Path
@@ -192,9 +193,10 @@ class UnifiClient:
         for client in clients["data"]:
             if not client["is_wired"]:
                 wc = {}
-                for prop in ["mac", "name", "hostname"]:
+                for prop in ["mac", "name", "hostname", "last_seen"]:
                     if prop in client:
                         wc[prop] = client[prop]
+                wc["msg_ts"] = int(datetime.now().timestamp())
                 self._current_wifi_clients.append(wc)
         if self._zmq.available:
             self._zmq.send_client_info(self._current_wifi_clients)
