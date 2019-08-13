@@ -3,4 +3,5 @@
 build/**
 dist/**
 *.egg-info/**
-pypi_commands_notes.txt
+pypi_commands_notes.txt__pycache
+unifi2mqtt/__pycache__

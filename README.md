@@ -1,3 +1,80 @@
+# unifi2mqtt - the result of hunifie as an organ donor
+
+I've ruthlessly hacked on the guts of `hunnifie`, ripped asunder the Hue bridge and 0MQ/ZMQ logic
+and replaced it with some hot MQTT publishing action.  It fit in there OK once I had a running start.
+
+## why
+
+The general idea here is to use this platform to implement [Home Assistant](https://home-assistant.io) 
+`device_tracker` entities using the [JSON MQTT Device Tracker](https://www.home-assistant.io/components/mqtt_json/)
+platform, one of many types of [Presence Detection](https://www.home-assistant.io/components/#presence-detection) 
+integrations.  It queries the UniFi manager application of a list of devices, and will publish updates via MQTT 
+with a JSON payload for *only* those devices that you specify.
+
+This is intended as a workaround for the recently updated 
+[UniFi integration](https://www.home-assistant.io/components/unifi/) which has lost the ability
+to selectively allow only specific devices to have their presence known by creating `device_tracker`
+entities.
+
+## how
+
+### unifi2mqtt operation
+
+You can select which devices selected by specifing the MAC address or the hostname.  Please note
+that the matches are simple, case senstive textual matches.  So the mac address you specify ought to
+be in lower case to match the JSON payload from UniFi.  If you want to use the Hostname, ensure that
+the case matches.  
+
+You could also match on the IP address, though honestly, I'm not sure how UniFi 
+figures that out -- on my system, the DHCP server isn't on a UniFi managed device, so it must
+wiretap the traffic, maybe look at ARP responses or something?
+
+This software, when a desired device is detected, will publish an MQTT payload like this:
+
+```
+ {"mac": "70:ef:00:06:be:ef", "hostname": "iPhone", 
+  "ap_mac": "f0:9f:c2:26:1e:ca", "bssid": "f2:9f:c2:28:1e:ca", "ip": "10.0.1.42",
+  "latitude": 44.4200, "longitude": -78.1234, "gps_accuracy": 20}
+```
+
+to a topic constructed by a prefix you specify, appened with the MAC address, such as:
+
+```
+19916/unifi-clients/70:ef:00:06:be:ef: 
+```
+
+The latitude and logitude are also specified as options (or in from the configuration file), and probably should
+match the latitude and logitude of your Home Assistant installation so that devices are considered "home".  Note
+that presently, the "gps accuracy" is fixed at 20 meters.
+
+There's nothing fancy here to select by Wi-Fi network name or site or anything like that.  I'm not even
+sure how the API is supposed work... remember, this is just a drive-by shooting and kidnapping of some
+existing code.  I didn't look too hard at the parts that seemed to work Just Fine to figure out why
+they worked like they did.  Just a hack, both quick and dirty.
+
+### Home Assistant configuration
+
+The Home Assistant configuration would look something like this:
+
+```
+device_tracker:
+  - platform: mqtt_json
+    qos: 0
+    devices:
+      iphone: 19916/unifi-clients/70:ef:00:06:be:ef
+```
+
+## Epilog and apology
+
+As part of the process, I've renamed it so that the original's reputation won't suffer from the
+poor reputation of this effort.   As a tribute, I've left the original README.md file below.  While
+the options have changed around a bit, the general approach of managing configuration data, options
+and the like are preserved, though some of the defaults are changed here and there.
+
+Please, for the love of DOG and all that is holy, do not bother the original author of `huunifie` 
+with questions that might come from using these changes that I slammed into his code.  I apologize.
+
+
 # huunifie
 A Hue bridge and Unifi controller client. Enables/disables specified Hue schedules in the presence/absence of specified wifi devices on the Unifi controller.
 
