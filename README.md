@@ -6,7 +6,7 @@ and replaced it with some hot MQTT publishing action.  It fit in there OK once I
 ## why
 
 The general idea here is to use this platform to implement [Home Assistant](https://home-assistant.io) 
-`device_tracker` entities using the [JSON MQTT Device Tracker](https://www.home-assistant.io/components/mqtt_json/)
+`device_tracker` entities using the [ MQTT Device Tracker](https://www.home-assistant.io/components/device_tracker.mqtt/)
 platform, one of many types of [Presence Detection](https://www.home-assistant.io/components/#presence-detection) 
 integrations.  It queries the UniFi manager application of a list of devices, and will publish updates via MQTT 
 with a JSON payload for *only* those devices that you specify.
@@ -29,19 +29,31 @@ You could also match on the IP address, though honestly, I'm not sure how UniFi
 figures that out -- on my system, the DHCP server isn't on a UniFi managed device, so it must
 wiretap the traffic, maybe look at ARP responses or something?
 
-This software, when a desired device is detected, will publish an MQTT payload like this:
+This software, when a desired device is detected, will publish an MQTT payloads like 
+this (assuming that the MQTT prefix is "unifi-clients"):
 
+First, somewhat detailed information will be published to a topic like 
+`unifi-clients/70:ef:00:06:be:ef` -- a periodic message while the UniFi controller has
+information about the device (while it's registered and for a few minutes afterwards):
 ```
  {"mac": "70:ef:00:06:be:ef", "hostname": "iPhone", 
   "ap_mac": "f0:9f:c2:26:1e:ca", "bssid": "f2:9f:c2:28:1e:ca", "ip": "10.0.1.42",
   "latitude": 44.4200, "longitude": -78.1234, "gps_accuracy": 20}
 ```
+this message can be used for debugging, or perhaps for some advanced application where knowing
+some of the other metadata, like the access point MAC address could be useful.  Unfortunately,
+I don't think that you can use solely this message with the `mqtt_json` device tracker 
+component because when the device is no longer associated on the network.. what do you do?  There's
+no explicit "not home" data you can transmit; the mqtt_json component relies on the latitude and
+longitude to determine if the device is home or not.  So you're left with transmitting a bogus
+position outside the home as an option.  Except if you're also using some other device tracker
+component (like OwnTracks) and you've defined other zones that you might be interested in.  Both
+devices trackers are being updated and this is a confusing situation.  So...
 
-to a topic constructed by a prefix you specify, appened with the MAC address, such as:
-
-```
-19916/unifi-clients/70:ef:00:06:be:ef: 
-```
+Second, a much simpler message with a payload of either `home` or `not_home` 
+that is intended to be used with the Home Assistant `mqtt` device tracker component is also
+availabe.  It is posted to a topic like `unifi-clients/70:ef:00:06:be:ef/home` where 
+of course the second component is the MAC address of the device.
 
 The latitude and logitude are also specified as options (or in from the configuration file), and probably should
 match the latitude and logitude of your Home Assistant installation so that devices are considered "home".  Note
@@ -58,11 +70,11 @@ The Home Assistant configuration would look something like this:
 
 ```
 device_tracker:
-  - platform: mqtt_json
-    qos: 0
+  - platform: mqtt
     devices:
-      iphone: 19916/unifi-clients/70:ef:00:06:be:ef
+      iphone: unifi-clients/70:ef:00:06:be:ef/home
 ```
+
 
 ## Epilog and apology
 

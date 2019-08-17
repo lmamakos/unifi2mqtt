@@ -36,6 +36,7 @@ __unifi_api_login__ = "/api/login"
 __unifi_api_clients_stats__ = "/api/s/default/stat/sta"
 
 __wifi_clients_example__ = ["01:23:45:67:89:ab", "your_device_hostname"]
+__grace_period__ = 15
 
 import paho.mqtt.client as mqtt
 __mqttbroker__   = '10.200.0.100'
@@ -61,6 +62,8 @@ class UnifiClient:
         self._logged_in = False
         self._current_wifi_clients = []
         self._wifi_clients = args.wifi_clients
+        self._tracked = {}
+        self._grace_period = args.grace_period
         self._interval = args.interval
         self._longitude = args.longitude
         self._latitude = args.latitude
@@ -141,8 +144,23 @@ class UnifiClient:
                         wc[prop] = client[prop]
                 wc["msg_ts"] = int(datetime.now().timestamp())
                 self._current_wifi_clients.append(wc)
+
         logging.debug("clients: " + str(self._current_wifi_clients))
 
+    def _publish_tracked_clients(self):
+        "For each tracked client, publish current home/not_home state"
+        now = int(datetime.now().timestamp())
+        for _,client in self._tracked.items():
+            payload = "home" if ((client["last_seen"] + self._grace_period) > now) else "not_home"
+
+            self._mqttc.publish(self._mqtt_prefix + '/' + client['mac'] + '/home',
+                                payload=payload,
+                                qos=self._mqtt_qos,
+                                retain=self._mqtt_retain)
+            logging.debug("publish {} / {} is {} last seen={} limit={} now={}".format(
+                    client["mac"], client["hostname"], payload,
+                    client["last_seen"], client["last_seen"]+self._grace_period, now))
+            
     def _publish_client(self, client):
         # strip out timestamps to avoid constantly changing metadata
         msg = {k : client[k] for k in client.keys() if k not in ['last_seen', 'msg_ts'] }
@@ -159,7 +177,11 @@ class UnifiClient:
             logging.debug(self._wifi_clients)
             set_wifi = set(self._wifi_clients).intersection(c.values())
             if len(set_wifi):
+                self._tracked[c["mac"]] = c
                 self._publish_client(c)
+
+        # now we'll publish an updated for all the tracked clients
+        self._publish_tracked_clients()
 
     def current_wifi_clients(self) -> list:
         """
@@ -226,6 +248,10 @@ class UniFi2MQTT:
             self.configuration.wifi_clients = __wifi_clients_example__
         h_config["general"]["wifi_clients"] = ",".join(self.configuration.wifi_clients)
 
+        if not self.configuration.grace_period:
+            self.configuration.grace_period = __grace_period__
+        h_config["general"]["wifi_clients"] = str(self.configuration.grace_period)
+
         h_config["unifi"] = {}
         if not self.configuration.unifi_host:
             self.configuration.unifi_host = __unifi_controller_host__
@@ -287,6 +313,8 @@ class UniFi2MQTT:
             self.configuration.latitude = float(h_config["general"]["latitude"])
         if not self.configuration.wifi_clients:
             self.configuration.wifi_clients = h_config["general"]["wifi_clients"].split(",")
+        if not self.configuration.grace_period:
+            self.configuration.grace_period = int(h_config["general"]["grace_period"])
         if not self.configuration.unifi_host:
             self.configuration.unifi_host = h_config["unifi"]["host"]
         if not self.configuration.unifi_port:
@@ -342,6 +370,8 @@ class UniFi2MQTT:
         parser.add_argument("-wc", "--wifi_clients",
                             help="Wifi clients (hostname or mac) to monitor. Clients names are separated by spaces.",
                             nargs="+", type=str)
+        parser.add_argument("-g", "--grace_period", 
+                            help="Period in seconds before client is declared not home", type=int)
 
         parser.add_argument("-i", "--interval", help="Polling interval", type=int)
         parser.add_argument("--latitude", help="latitude of the site", type=float)
